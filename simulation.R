@@ -42,7 +42,7 @@ tau.mat = matrix(c(0.6,0.12,0,0,0.6,0.12,-0.005,-0.01),
 samp = c(200,300,400,500,600)
 
 #Create matrices to hold simulated data
-sims = matrix(nrow=dim(rhos)[1]*dim(tau.mat)[1]*length(samp)*simn,ncol=22)
+sims = matrix(nrow=dim(rhos)[1]*dim(tau.mat)[1]*length(samp)*simn,ncol=15)
 calc = matrix(nrow=dim(rhos)[1]*dim(tau.mat)[1]*length(samp),ncol=22)
 
 
@@ -74,9 +74,34 @@ for (p in 1:dim(rhos)[1]){
       #Variance
       v.a = (2/samp[n]) * A %*% t(solve(XR.T)) %*% solve(XR.T) 
       v.tau = (2/samp[n]) * t(solve(XR.T)) %*% solve(XR.T) 
+      
+      #S Matrix (what is this again?)
+      S = sqrt(2/samp[n]) * solve(XR.T)
+      
+      #Calculated values of estimator and test statistic (check against simulation)
+      a.calc = A %*% tau
+      t.calc = sqrt(t(a.calc**2) %*% solve(diag(diag(v.a))))
+      calcrow = cbind(rho1,rho2,rho3,rho4,t(tau),samp[n],t.calc,t(a.calc),t(diag(v.a)),t(diag(v.tau)))
+      
+      #Insert calcrow into calc matrix
+      calc[(p-1)*dim(tau.mat)[1]*length(samp)+(t-1)*length(samp)+(n-1)+1,]=calcrow
+      
+      
+      
+      #Time to simulate the estimator and test statistic
+      for (i in 1:dim(Z)[2]){
+        tau.hat = S %*% Z[,i] + tau
+        a.sim = A %*% tau.hat
+        t.sim = sqrt(t(a.sim**2) %*% solve(diag(diag(v.a))))
+        
+        simrow = cbind(rho1,rho2,rho3,rho4,t(tau),samp[n],t.sim,t(a.sim))
+        
+        #Insert simrow into simulation matrix
+        
+        sims[(p-1)*dim(tau.mat)[1]*length(samp)+(t-1)*length(samp)+(n-1)*dim(Z)[2]+i,]=simrow
+        
+      }
     }
- 
   }
 }
-mymat
 
