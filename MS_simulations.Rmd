@@ -1,0 +1,193 @@
+---
+title: "MS_Paper_Simulations"
+author: "Catie Wiener"
+date: "April 4, 2019"
+output: html_document
+---
+
+```{r, include=FALSE}
+setwd("/Users/catie/OneDrive/Documents/School/Master_Paper/Program/R")
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+```
+
+
+```{r, include=FALSE}
+
+set.seed (41792)
+
+#Create and populate 4x10000 matrix with normal random variables
+Z = matrix( rnorm(40000,mean=0,sd=1), 4, 10000)
+
+#Create contrast matrix
+A = matrix(c(1, 3, 0, 
+             0, 1, 3, 
+             1, 3, 0.5, 
+             1.5, 1, 3), 
+          nrow=3,
+          ncol=4,
+          byrow=TRUE)
+
+#Create design matrix
+X = matrix(c(0,0,0,0,
+             1,0,0,0,
+             1,1,0,0,
+             1,2,0,0,
+             1,3,0,0,
+             1,3,1,0,
+             1,3,1,1,
+             1,3,1,2,
+             1,3,1,3),
+           nrow=9,
+           ncol=4,
+           byrow=TRUE)
+
+ID = diag(4)
+V1 = c(1,1,1,1)
+
+simn = dim(Z)[2]
+
+#Make this dynamic
+rhos = matrix(c(
+                0.5,0.3,
+                0.6,0.4,
+                0.7,0.5
+                ),
+              nrow=3,
+              ncol=2,
+              byrow=TRUE)
+tau.mat = matrix(c(0.06,  0.12,  0,      0,
+                   0.06,  0.12, -0.005, -0.005,
+					         0.06,  0.12, -0.005, -0.0075,
+				           0.06,  0.12, -0.01,  -0.01,
+					         0.06,	0.12,	-0.01,	-0.015,
+				           0.06,	0.12,	-0.02,	-0.02,
+					         0.06,	0.12,	-0.02,	-0.03,
+					         0.06,	0.12,	-0.02,	-0.04,
+					         0.06,	0.12,	-0.025,	-0.025,
+					         0.06,	0.12,	-0.03,	-0.03,
+					         0.06,	0.12,	-0.03,	-0.06	),
+               nrow=13,
+               ncol=4,
+               byrow=TRUE)
+samp = c(200,300,400,500,600)
+
+#Create matrices to hold simulated data
+sims = matrix(nrow=dim(rhos)[1]*dim(tau.mat)[1]*length(samp)*simn,
+              ncol=15,
+              dimnames = list(NULL,c("rho1","rho2","rho3","rho4","tau1","tau2","tau3","tau4","N","T1","T2","T3","A1","A2","A3")))
+calc = matrix(nrow=dim(rhos)[1]*dim(tau.mat)[1]*length(samp),
+              ncol=22,
+              dimnames = list(NULL,c("rho1","rho2","rho3","rho4","tau1","tau2","tau3","tau4","N","T1","T2","T3","A1","A2","A3","VA1","VA2","VA3","Vtau1","Vtau2","Vtau3","Vtau4")))
+
+for (p in 1:dim(rhos)[1]){
+  
+  rho1 = rhos[p,1]
+  rho2 = rhos[p,2]
+  rho3 = rho1
+  rho4 = rho2
+  
+  Rtilda = ((1-rho3)*ID) + (rho3*V1 %*% t(V1))
+
+  #Create correlation matrix
+  R = rbind(cbind(1,rho1*t(V1),rho2*t(V1)),
+            cbind(rho1*V1,Rtilda,rho4*V1 %*% t(V1)),
+            cbind(rho2*V1,rho4*V1 %*% t(V1),Rtilda))
+  
+  XR = t(X) %*% solve(R) %*% X
+
+  XR.T = solve(t(chol(XR)))
+  
+
+  for (t in 1:dim(tau.mat)[1]){
+    tau = tau.mat[t,]  
+    
+    for (n in 1:length(samp)){
+      
+      #Variance
+      v.a = (2/samp[n]) * A %*% t(XR.T) %*% XR.T %*% t(A)
+      v.tau = (2/samp[n]) * t(XR.T) %*% XR.T 
+      
+      #S Matrix
+      S = sqrt(2/samp[n]) * XR.T
+      
+      #Calculated values of estimator and test statistic (check against simulation)
+      a.calc = A %*% tau
+      t.calc = sqrt(t(a.calc**2) %*% solve(diag(diag(v.a))))
+      calcrow = cbind(rho1,rho2,rho3,rho4,t(tau),samp[n],t.calc,t(a.calc),t(diag(v.a)),t(diag(v.tau)))
+      
+      #Insert calcrow into calc matrix
+      calc[(p-1)*dim(tau.mat)[1]*length(samp)+(t-1)*length(samp)+(n-1)+1,]=calcrow
+      
+      
+      
+      #Time to simulate the estimator and test statistic
+      for (i in 1:dim(Z)[2]){
+        tau.hat = S %*% Z[,i] + tau
+        a.sim = A %*% tau.hat
+        t.sim = sqrt(t(a.sim**2) %*% solve(diag(diag(v.a))))
+        
+        simrow = cbind(rho1,rho2,rho3,rho4,t(tau),samp[n],t.sim,t(a.sim))
+        
+        #Insert simrow into simulation matrix
+        
+        sims[(p-1)*dim(tau.mat)[1]*length(samp)*dim(Z)[2]+(t-1)*length(samp)*dim(Z)[2]+(n-1)*dim(Z)[2]+i,]=simrow
+        
+      }
+    }
+  }
+}
+
+#making sure test statistic and estimator are in line
+powercalc <- function(ds){
+  for (i in 0:2){
+    for (j in 1:dim(ds)[1]){
+      if (ds[j,i+13]<0){
+        ds[j,i+10]<-(ds[j,i+10])*(-1)
+      }
+    }
+  }
+  
+  return(ds)
+}
+
+
+#Get calculated values of the test statistic using probnorm
+calc.sum <- as.data.frame(powercalc(ds=calc)) %>%
+  mutate (c1=pnorm(T1),c2=pnorm(T2),c3=pnorm(T3),c12=c1+c2-1,c123=1-((1-c1)+(1-c2)+(1-c3))) %>%
+    select(rho1, rho2, tau3, tau4, N, c1, c2, c3, c12, c123) %>%
+        arrange(desc(tau3),desc(tau4))
+
+#Create indicator variable to check if each test statistic is above 1.96, then find mean of those indicators. 
+sims.sum <- as.data.frame(powercalc(ds=sims)) %>%
+  mutate (c1=ifelse(T1>=1.96,1,0),c2=ifelse(T2>=1.96,1,0),c3=ifelse(T3>=1.96,1,0),c12=c1*c2,c123=c1*c2*c3) %>%
+    group_by(rho1, rho2, tau3, tau4, N) %>%
+      summarise(c3.mean=mean(c3),c12.mean=mean(c12),c123.mean=mean(c123)) %>%
+        arrange(rho1,desc(tau3),desc(tau4))
+```
+
+##Simulation Results
+
+
+```{r echo=FALSE}
+#Produce table with power results from all combinations of rho, taus, and sample size
+#Haven't been able to get the greek letters to populate correctly, some issue with the spanning header? 
+
+kable(sims.sum, col.names=c("rho1","rho2","tau3","tau4","Sample Size","C3","C12","C123"),escape=FALSE,booktabs=T,caption="Simulated Power for Detecting Disease Modification with tau1=0.06 and tau2=0.12") %>% 
+    add_header_above(c(" "=5,"Power"=3),escape=FALSE) %>% 
+      kable_styling(full_width=T)%>%
+        collapse_rows(columns=1:4,valign="top") 
+```
+
+```{r echo=FALSE}
+#Figure of effect of sample size and taus used in paper
+filter(sims.sum,tau3==tau4 & rho1==0.6) %>%
+  ggplot( aes(x = tau3, y = c123.mean, color = as.factor(N))) + 
+    geom_point(aes(group=as.factor(N))) + geom_line(aes(group=as.factor(N))) + 
+      labs(color="Sample Size",x=expression(tau[3]==tau[4]),y="Power for DM Effect") + 
+        ggtitle(expression(paste("Effects of ",tau[3]==tau[4]," and sample size on overall power, with ",rho[1]==0.6," and ",rho[2]==0.4)))
+```
+
+
